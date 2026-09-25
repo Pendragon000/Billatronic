@@ -46,7 +46,10 @@ extern "C"{
     #endif
 #endif
 #include "mikrosdk_shim.h"
-
+#include <driver/spi_master.h>
+#include "driver/gpio.h"
+#include "esp_rom_sys.h"
+#include "freertos/FreeRTOS.h"
 /*!
  * @addtogroup ism3 ISM 3 Click Driver
  * @brief API for configuring and manipulating ISM 3 Click driver.
@@ -585,52 +588,9 @@ extern "C"{
 /*! @} */ // ism3_map
 /*! @} */ // ism3
 
-/**
- * @brief ISM 3 Click context object.
- * @details Context object definition of ISM 3 Click driver.
- */
-typedef struct
-{
-    // Output pins
-    digital_out_t rst;          /**< Reset pin (Active low). */
-    digital_out_t cs;           /**< Chip select pin (Active low). */
 
-    // Input pins
-    digital_in_t gp0;           /**< GPIO 0 pin. */
-    digital_in_t gp1;           /**< GPIO 1 pin. */
-    digital_in_t gp2;           /**< GPIO 2 pin. */
 
-    // Modules
-    spi_master_t spi;           /**< SPI driver object. */
 
-    uint16_t status;            /**< Status word of the last read/write sequence. */
-
-} ism3_t;
-
-/**
- * @brief ISM 3 Click configuration object.
- * @details Configuration object definition of ISM 3 Click driver.
- */
-typedef struct
-{
-    // Communication gpio pins
-    pin_name_t miso;            /**< Master input - slave output pin descriptor for SPI driver. */
-    pin_name_t mosi;            /**< Master output - slave input pin descriptor for SPI driver. */
-    pin_name_t sck;             /**< Clock pin descriptor for SPI driver. */
-    pin_name_t cs;              /**< Chip select pin descriptor for SPI driver. */
-
-    // Additional gpio pins
-    pin_name_t gp0;             /**< GPIO 0 pin. */
-    pin_name_t rst;             /**< Reset pin (Active low). */
-    pin_name_t gp2;             /**< GPIO 2 pin. */
-    pin_name_t gp1;             /**< GPIO 1 pin. */
-
-    // static variable
-    uint32_t                          spi_speed;    /**< SPI serial speed. */
-    spi_master_mode_t                 spi_mode;     /**< SPI master mode. */
-    spi_master_chip_select_polarity_t cs_polarity;  /**< Chip select pin polarity. */
-
-} ism3_cfg_t;
 
 /**
  * @brief ISM 3 Click return value data.
@@ -644,6 +604,21 @@ typedef enum
 
 } ism3_return_value_t;
 
+typedef struct {
+ gpio_num_t sck, miso, mosi, cs, rst, gp0, gp1, gp2;
+ int spi_speed;
+} ism3_cfg_t;
+
+typedef struct {
+ spi_device_handle_t spi;
+ gpio_num_t rst, gp0, gp1, gp2;
+ uint16_t status;
+} ism3_t;
+
+#define Delay_50us()  esp_rom_delay_us(50)
+#define Delay_1ms()   vTaskDelay(pdMS_TO_TICKS(1))   // note: rounds to 1 tick
+#define Delay_100ms() vTaskDelay(pdMS_TO_TICKS(100))
+#define Delay_1sec()  vTaskDelay(pdMS_TO_TICKS(1000))
 /*!
  * @addtogroup ism3 ISM 3 Click Driver
  * @brief API for configuring and manipulating ISM 3 Click driver.

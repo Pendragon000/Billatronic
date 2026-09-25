@@ -25,71 +25,62 @@
  * @brief ISM 3 Click Driver.
  */
 
-#include "ism3.h"
+#include "include/ism3.h"
 
 /**
  * @brief Dummy data.
  * @details Definition of dummy data.
  */
 #define DUMMY  0x00
-
-void ism3_cfg_setup ( ism3_cfg_t *cfg ) 
+#define ISM3_MAX_XFER 130
+static err_t ism3_transfer ( ism3_t *ctx, uint8_t hdr, uint8_t arg,
+                             const uint8_t *tx, uint8_t *rx, size_t len )
 {
-    cfg->sck  = HAL_PIN_NC;
-    cfg->miso = HAL_PIN_NC;
-    cfg->mosi = HAL_PIN_NC;
-    cfg->cs   = HAL_PIN_NC;
-    cfg->gp0  = HAL_PIN_NC;
-    cfg->rst  = HAL_PIN_NC;
-    cfg->gp2  = HAL_PIN_NC;
-    cfg->gp1  = HAL_PIN_NC;
+    uint8_t txb[ 2 + ISM3_MAX_XFER ] = { hdr, arg };
+    uint8_t rxb[ 2 + ISM3_MAX_XFER ] = { 0 };
+    if ( len > ISM3_MAX_XFER ) return ISM3_ERROR;
+    if ( tx ) memcpy( &txb[ 2 ], tx, len );
 
-    cfg->spi_speed   = 1000000;
-    cfg->spi_mode    = SPI_MASTER_MODE_0;
-    cfg->cs_polarity = SPI_MASTER_CHIP_SELECT_POLARITY_ACTIVE_LOW;
+    spi_transaction_t t = {
+        .length    = ( 2 + len ) * 8,
+        .tx_buffer = txb,
+        .rx_buffer = rxb,
+    };
+    if ( ESP_OK != spi_device_transmit( ctx->spi, &t ) ) return ISM3_ERROR;
+
+    ctx->status = ( ( uint16_t ) rxb[ 0 ] << 8 ) | rxb[ 1 ];
+    if ( rx ) memcpy( rx, &rxb[ 2 ], len );
+    return ISM3_OK;
+}
+void ism3_cfg_setup ( ism3_cfg_t *cfg )
+{
+    cfg->sck = GPIO_NUM_18;  cfg->miso = GPIO_NUM_19;
+    cfg->mosi = GPIO_NUM_23; cfg->cs = GPIO_NUM_5;
+    cfg->rst = GPIO_NUM_21;  cfg->gp0 = GPIO_NUM_22;   // pick your own free pins
+    cfg->gp1 = GPIO_NUM_25;  cfg->gp2 = GPIO_NUM_26;
+    cfg->spi_speed = 1000000;
 }
 
-err_t ism3_init ( ism3_t *ctx, ism3_cfg_t *cfg ) 
+err_t ism3_init ( ism3_t *ctx, ism3_cfg_t *cfg )
 {
-    spi_master_config_t spi_cfg;
+    spi_bus_config_t bus = {
+        .sclk_io_num = cfg->sck, .miso_io_num = cfg->miso, .mosi_io_num = cfg->mosi,
+        .quadwp_io_num = -1, .quadhd_io_num = -1, .max_transfer_sz = 256,
+    };
+    spi_device_interface_config_t dev = {
+        .clock_speed_hz = cfg->spi_speed, .mode = 0,
+        .spics_io_num = cfg->cs, .queue_size = 3,
+    };
+    if ( ESP_OK != spi_bus_initialize( SPI3_HOST, &bus, SPI_DMA_CH_AUTO ) ) return ISM3_ERROR;
+    if ( ESP_OK != spi_bus_add_device( SPI3_HOST, &dev, &ctx->spi ) )       return ISM3_ERROR;
 
-    spi_master_configure_default( &spi_cfg );
+    ctx->rst = cfg->rst; ctx->gp0 = cfg->gp0; ctx->gp1 = cfg->gp1; ctx->gp2 = cfg->gp2;
 
-    spi_cfg.sck  = cfg->sck;
-    spi_cfg.miso = cfg->miso;
-    spi_cfg.mosi = cfg->mosi;
-
-    if ( SPI_MASTER_ERROR == spi_master_open( &ctx->spi, &spi_cfg ) ) 
-    {
-        return SPI_MASTER_ERROR;
-    }
-
-    if ( SPI_MASTER_ERROR == spi_master_set_default_write_data( &ctx->spi, DUMMY ) ) 
-    {
-        return SPI_MASTER_ERROR;
-    }
-
-    if ( SPI_MASTER_ERROR == spi_master_set_mode( &ctx->spi, cfg->spi_mode ) ) 
-    {
-        return SPI_MASTER_ERROR;
-    }
-
-    if ( SPI_MASTER_ERROR == spi_master_set_speed( &ctx->spi, cfg->spi_speed ) ) 
-    {
-        return SPI_MASTER_ERROR;
-    }
-
-    spi_master_set_chip_select_polarity( cfg->cs_polarity );
-
-    digital_out_init( &ctx->rst, cfg->rst );
-    digital_out_init( &ctx->cs, cfg->cs );
-    digital_out_high( &ctx->cs );
-
-    digital_in_init( &ctx->gp0, cfg->gp0 );
-    digital_in_init( &ctx->gp1, cfg->gp1 );
-    digital_in_init( &ctx->gp2, cfg->gp2 );
-    
-    return SPI_MASTER_SUCCESS;
+    gpio_set_direction( ctx->rst, GPIO_MODE_OUTPUT );
+    gpio_set_direction( ctx->gp0, GPIO_MODE_INPUT );
+    gpio_set_direction( ctx->gp1, GPIO_MODE_INPUT );
+    gpio_set_direction( ctx->gp2, GPIO_MODE_INPUT );
+    return ISM3_OK;
 }
 
 err_t ism3_default_cfg ( ism3_t *ctx ) 
@@ -229,18 +220,7 @@ err_t ism3_default_cfg ( ism3_t *ctx )
 
 err_t ism3_write_regs ( ism3_t *ctx, uint8_t reg, uint8_t *data_in, uint8_t len )
 {
-    uint8_t status_buf[ 2 ] = { 0 };
-    err_t error_flag = ISM3_OK;
-    digital_out_low( &ctx->cs );
-    error_flag |= spi_master_set_default_write_data( &ctx->spi, ISM3_HEADER_WRITE_REG );
-    error_flag |= spi_master_read( &ctx->spi, &status_buf[ 0 ], 1 );
-    error_flag |= spi_master_set_default_write_data( &ctx->spi, reg );
-    error_flag |= spi_master_read( &ctx->spi, &status_buf[ 1 ], 1 );
-    error_flag |= spi_master_set_default_write_data( &ctx->spi, DUMMY );
-    error_flag |= spi_master_write( &ctx->spi, data_in, len );
-    digital_out_high( &ctx->cs );
-    ctx->status = ( ( uint16_t ) status_buf[ 0 ] << 8 ) | status_buf[ 1 ]; 
-    return error_flag;
+    return ism3_transfer( ctx, ISM3_HEADER_WRITE_REG, reg, data_in, NULL, len );
 }
 
 err_t ism3_write_reg ( ism3_t *ctx, uint8_t reg, uint8_t data_in )
@@ -250,18 +230,7 @@ err_t ism3_write_reg ( ism3_t *ctx, uint8_t reg, uint8_t data_in )
 
 err_t ism3_read_regs ( ism3_t *ctx, uint8_t reg, uint8_t *data_out, uint8_t len )
 {
-    uint8_t status_buf[ 2 ] = { 0 };
-    err_t error_flag = ISM3_OK;
-    digital_out_low( &ctx->cs );
-    error_flag |= spi_master_set_default_write_data( &ctx->spi, ISM3_HEADER_READ_REG );
-    error_flag |= spi_master_read( &ctx->spi, &status_buf[ 0 ], 1 );
-    error_flag |= spi_master_set_default_write_data( &ctx->spi, reg );
-    error_flag |= spi_master_read( &ctx->spi, &status_buf[ 1 ], 1 );
-    error_flag |= spi_master_set_default_write_data( &ctx->spi, DUMMY );
-    error_flag |= spi_master_read( &ctx->spi, data_out, len );
-    digital_out_high( &ctx->cs );
-    ctx->status = ( ( uint16_t ) status_buf[ 0 ] << 8 ) | status_buf[ 1 ]; 
-    return error_flag;
+    return ism3_transfer( ctx, ISM3_HEADER_READ_REG, reg, NULL, data_out, len );
 }
 
 err_t ism3_read_reg ( ism3_t *ctx, uint8_t reg, uint8_t *data_out )
@@ -271,28 +240,13 @@ err_t ism3_read_reg ( ism3_t *ctx, uint8_t reg, uint8_t *data_out )
 
 err_t ism3_write_cmd ( ism3_t *ctx, uint8_t cmd )
 {
-    uint8_t status_buf[ 2 ] = { 0 };
-    err_t error_flag = ISM3_OK;
-    digital_out_low( &ctx->cs );
-    error_flag |= spi_master_set_default_write_data( &ctx->spi, ISM3_HEADER_WRITE_CMD );
-    error_flag |= spi_master_read( &ctx->spi, &status_buf[ 0 ], 1 );
-    error_flag |= spi_master_set_default_write_data( &ctx->spi, cmd );
-    error_flag |= spi_master_read( &ctx->spi, &status_buf[ 1 ], 1 );
-    error_flag |= spi_master_set_default_write_data( &ctx->spi, DUMMY );
-    digital_out_high( &ctx->cs );
-    ctx->status = ( ( uint16_t ) status_buf[ 0 ] << 8 ) | status_buf[ 1 ]; 
-    return error_flag;
+    return ism3_transfer( ctx, ISM3_HEADER_WRITE_CMD, cmd, NULL, NULL, 0 );
 }
 
-void ism3_enable_device ( ism3_t *ctx )
-{
-    digital_out_high ( &ctx->rst );
-}
 
-void ism3_disable_device ( ism3_t *ctx )
-{
-    digital_out_low ( &ctx->rst );
-}
+void ism3_enable_device  ( ism3_t *ctx ) { gpio_set_level( ctx->rst, 1 ); }
+
+void ism3_disable_device ( ism3_t *ctx ) { gpio_set_level( ctx->rst, 0 ); }
 
 uint8_t ism3_get_gp0_pin ( ism3_t *ctx )
 {
@@ -509,5 +463,6 @@ err_t ism3_receive_packet ( ism3_t *ctx, uint8_t *data_out, uint8_t *len )
     }
     return error_flag;
 }
+
 
 // ------------------------------------------------------------------------- END
