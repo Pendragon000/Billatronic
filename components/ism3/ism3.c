@@ -250,17 +250,20 @@ void ism3_disable_device ( ism3_t *ctx ) { gpio_set_level( ctx->rst, 0 ); }
 
 uint8_t ism3_get_gp0_pin ( ism3_t *ctx )
 {
-    return digital_in_read ( &ctx->gp0 );
+    digital_in_t in = { ctx->gp0 };
+    return digital_in_read ( &in );
 }
 
 uint8_t ism3_get_gp1_pin ( ism3_t *ctx )
 {
-    return digital_in_read ( &ctx->gp1 );
+    digital_in_t in = { ctx->gp1 };
+    return digital_in_read ( &in );
 }
 
 uint8_t ism3_get_gp2_pin ( ism3_t *ctx )
 {
-    return digital_in_read ( &ctx->gp2 );
+    digital_in_t in = { ctx->gp2 };
+    return digital_in_read ( &in );
 }
 
 err_t ism3_check_communication ( ism3_t *ctx )
