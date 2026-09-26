@@ -1,47 +1,38 @@
-#include <stdio.h>
-#include <driver/spi_master.h>
-
-#include "soc/gpio_num.h"
-
-const gpio_num_t miso_spi = GPIO_NUM_19;
-const gpio_num_t mosi_spi = GPIO_NUM_23;
-const gpio_num_t clk_spi = GPIO_NUM_18;
-const gpio_num_t cs_spi = GPIO_NUM_5;
-
-const spi_bus_config_t bus_cfg = {
-    .miso_io_num = miso_spi,
-    .mosi_io_num = mosi_spi,
-    .sclk_io_num = clk_spi,
-    .quadhd_io_num = -1,
-    .quadwp_io_num = -1,
-    .max_transfer_sz = 4096
-};
-
-const spi_device_interface_config_t dev_cfg = {
-    .command_bits = 0,
-    .address_bits = 0,
-    .dummy_bits = 0,
-    .clock_speed_hz = 2000000,
-    .duty_cycle_pos = 128,      //50% duty cycle
-    .mode = 0,
-    .spics_io_num = cs_spi,
-    .queue_size = 3
-};
-
-static spi_device_handle_t spi_handle;
-
-///
-///Set up the spi connection with the Mikroe-6066 transciever.
-///
-static void setup_spi() {
-    esp_err_t ret = spi_bus_initialize(SPI3_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
-    ESP_ERROR_CHECK(ret);
-    // Adds the device to the spi host
-    ret = spi_bus_add_device(SPI3_HOST, &dev_cfg, &spi_handle);
-    ESP_ERROR_CHECK(ret);
-}
+#include "ism3.h"
+#include "keypad.h"
+#include "esp_log.h"
+#define TAG "keypad"
+static ism3_t ism3;
+static keypad_t keypad;
+void keypad_config(keypad_t *init);
 
 void app_main(void)
 {
-    setup_spi();
+    /*ism3_cfg_t cfg;
+    ism3_cfg_setup(&cfg);
+
+    if ( ISM3_OK != ism3_init( &ism3, &cfg ) ) { printf("init failed\n"); return; }
+    if ( ISM3_OK != ism3_default_cfg( &ism3 ) ) { printf("radio config failed\n"); return; }
+
+    uint8_t msg[ ISM3_PACKET_LEN ] = "hello";
+    ism3_transmit_packet( &ism3, msg, sizeof(msg) );*/
+    keypad_config(&keypad);
+    while (1) {
+        char c = keypad_read(&keypad);
+        ESP_LOGI(TAG,"%c",c);
+        vTaskDelay(10);
+    }
+}
+
+void keypad_config(keypad_t *init) {
+    init->rows[0] = GPIO_NUM_22;
+    init->rows[1] = GPIO_NUM_23;
+    init->rows[2] = GPIO_NUM_25;
+    init->rows[3] = GPIO_NUM_26;
+
+    init->cols[0] = GPIO_NUM_5;
+    init->cols[1] = GPIO_NUM_18;
+    init->cols[2] = GPIO_NUM_19;
+    init->cols[3] = GPIO_NUM_21;
+    keypad_init(&keypad);
 }

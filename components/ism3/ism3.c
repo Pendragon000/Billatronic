@@ -83,7 +83,10 @@ err_t ism3_init ( ism3_t *ctx, ism3_cfg_t *cfg )
     return ISM3_OK;
 }
 
-err_t ism3_default_cfg ( ism3_t *ctx ) 
+///
+/// @param ctx The ism3 you want to configure
+/// @return A initialised to a ook modulation at a 433.92 frequency band
+err_t ism3_default_cfg ( ism3_t *ctx )
 {
     uint8_t reg_data[ 6 ] = { 0 };
     err_t error_flag = ISM3_OK;
@@ -124,12 +127,14 @@ err_t ism3_default_cfg ( ism3_t *ctx )
     reg_data[ 1 ] = ISM3_IF_OFFSET_DIG_DEFAULT;
     error_flag |= ism3_write_regs ( ctx, ISM3_REG_IF_OFFSET_ANA, reg_data, 2 );
 
-    // Set datarate to 38400bps for digital domain frequency (fdig) of 25MHz
+    // --- MODULATION: OOK instead of 2-FSK ---
+    // Lower the datarate a bit for a cleaner, easier-to-read raw capture on Flipper.
+    // Keep the same DATARATE_M/E bytes if you just want to try OOK at the same rate first.
     reg_data[ 0 ] = ISM3_MOD4_DATARATE_M_15_8_DEFAULT;
     reg_data[ 1 ] = ISM3_MOD3_DATARATE_M_7_0_DEFAULT;
-    reg_data[ 2 ] = ISM3_MOD2_MOD_TYPE_2FSK | ISM3_MOD2_DATARATE_E_DEFAULT;
+    reg_data[ 2 ] = ISM3_MOD2_MOD_TYPE_ASK_OOK | ISM3_MOD2_DATARATE_E_DEFAULT;   // <-- was ISM3_MOD2_MOD_TYPE_2FSK
 
-    // Set frequency deviation to 20 kHz
+    // Deviation fields are meaningless for OOK, but harmless to leave programmed.
     error_flag |= ism3_read_reg ( ctx, ISM3_REG_MOD1, &reg_data[ 3 ] );
     reg_data[ 3 ] &= ~( ISM3_MOD1_FDEV_E_MASK );
     reg_data[ 3 ] |= ISM3_MOD1_FDEV_E_DEFAULT;
@@ -139,9 +144,12 @@ err_t ism3_default_cfg ( ism3_t *ctx )
     reg_data[ 5 ] = ISM3_CHFLT_M_DEFAULT | ISM3_CHFLT_E_DEFAULT;
     error_flag |= ism3_write_regs ( ctx, ISM3_REG_MOD4, reg_data, 6 );
 
-    // Set PA power
+    // --- PA config for pure OOK ---
+    // PA_POWER[0] must be 0 (not just "smoothing off") so bit '0' truly means PA off.
+    // Disable FIR shaping AND ramping so the on/off edges are abrupt, which is what
+    // gives Flipper's raw capture clean, easy-to-see pulses.
     error_flag |= ism3_read_regs ( ctx, ISM3_REG_PA_POWER0, reg_data, 3 );
-    reg_data[ 0 ] &= ~( ISM3_PA_POWER0_DIG_SMOOTH_EN );
+    reg_data[ 0 ] = 0x00;                                    // PA_POWER[0] = 0 -> OOK, not ASK
     reg_data[ 1 ] &= ~( ISM3_PA_CONFIG1_FIR_EN );
     reg_data[ 2 ] &= ~( ISM3_PA_CONFIG0_PA_FC_MASK );
     reg_data[ 2 ] |= ISM3_PA_CONFIG0_PA_FC_50_KHZ;
@@ -167,10 +175,11 @@ err_t ism3_default_cfg ( ism3_t *ctx )
     reg_data[ 0 ] &= ~( ISM3_PA_POWER0_PA_MAXDBM );
     error_flag |= ism3_write_reg ( ctx, ISM3_REG_PA_POWER0, reg_data[ 0 ] );
 
-    // Set PA level
+    // Set PA level -- this is now the power used for bit '1' (PA_LEVEL8)
     error_flag |= ism3_write_reg ( ctx, ISM3_REG_PA_POWER8, ISM3_PA_POWER8_PA_LEVEL8_DEFAULT );
 
-    // Set PA level max index
+    // Set PA level max index -- must point at index 8, matching PA_POWER8 above,
+    // since that's the level S2-LP uses for OOK's "on" bit
     error_flag |= ism3_read_reg ( ctx, ISM3_REG_PA_POWER0, reg_data );
     reg_data[ 0 ] &= ~( ISM3_PA_POWER0_PA_LEVEL_MAX_IDX_MASK );
     reg_data[ 0 ] |= ISM3_PA_POWER0_PA_LEVEL_MAX_IDX_DEFAULT;
