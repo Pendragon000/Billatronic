@@ -1,7 +1,7 @@
 #include "ism3.h"
 #include "keypad.h"
 #include "esp_log.h"
-#define TAG "keypad"
+#define TAG "billatronic"
 static ism3_t ism3;
 static keypad_t keypad;
 void keypad_config(keypad_t *init);
