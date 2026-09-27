@@ -631,10 +631,11 @@ typedef struct {
  * values.
  * @param[out] cfg : Click configuration structure.
  * See #ism3_cfg_t object definition for detailed explanation.
+ * @param[in] type : The type of ESP32 used WROVER OR WROOM
  * @return Nothing.
  * @note The all used pins will be set to unconnected state.
  */
-void ism3_cfg_setup ( ism3_cfg_t *cfg );
+void ism3_cfg_setup ( ism3_cfg_t *cfg, char type[] );
 
 /**
  * @brief ISM 3 initialization function.

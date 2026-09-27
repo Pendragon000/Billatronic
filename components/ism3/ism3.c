@@ -27,6 +27,8 @@
 
 #include "include/ism3.h"
 
+#include "esp_log.h"
+
 /**
  * @brief Dummy data.
  * @details Definition of dummy data.
@@ -52,13 +54,24 @@ static err_t ism3_transfer ( ism3_t *ctx, uint8_t hdr, uint8_t arg,
     if ( rx ) memcpy( rx, &rxb[ 2 ], len );
     return ISM3_OK;
 }
-void ism3_cfg_setup ( ism3_cfg_t *cfg )
+void ism3_cfg_setup ( ism3_cfg_t *cfg, char type[])
 {
-    cfg->sck = GPIO_NUM_18;  cfg->miso = GPIO_NUM_19;
-    cfg->mosi = GPIO_NUM_23; cfg->cs = GPIO_NUM_5;
-    cfg->rst = GPIO_NUM_21;  cfg->gp0 = GPIO_NUM_22;   // pick your own free pins
-    cfg->gp1 = GPIO_NUM_25;  cfg->gp2 = GPIO_NUM_26;
-    cfg->spi_speed = 1000000;
+    if (strcmp(type, "WROVER") == 0) {
+        cfg->sck = GPIO_NUM_18;  cfg->miso = GPIO_NUM_19;
+        cfg->mosi = GPIO_NUM_23; cfg->cs = GPIO_NUM_5;
+        cfg->rst = GPIO_NUM_21;  cfg->gp0 = GPIO_NUM_22;
+        cfg->gp1 = GPIO_NUM_25;  cfg->gp2 = GPIO_NUM_26;
+        cfg->spi_speed = 1000000;
+    } else if (strcmp(type, "WROOM") == 0) {
+        cfg->sck = GPIO_NUM_14;  cfg->miso = GPIO_NUM_12;
+        cfg->mosi = GPIO_NUM_13; cfg->cs = GPIO_NUM_15;
+        cfg->rst = GPIO_NUM_5;   cfg->gp0 = GPIO_NUM_18;
+        cfg->gp1 = GPIO_NUM_27;  cfg->gp2 = GPIO_NUM_19;
+        cfg->spi_speed = 1000000;
+    } else {
+        cfg = NULL;
+    }
+
 }
 
 err_t ism3_init ( ism3_t *ctx, ism3_cfg_t *cfg )
@@ -187,7 +200,7 @@ err_t ism3_default_cfg ( ism3_t *ctx )
 
     // Set auto packet filtering
     error_flag |= ism3_read_reg ( ctx, ISM3_REG_PROTOCOL1, reg_data );
-    reg_data[ 0 ] |= ISM3_PROTOCOL1_AUTO_PCKT_FLT;
+    //eg_data[ 0 ] |= ISM3_PROTOCOL1_AUTO_PCKT_FLT;
     error_flag |= ism3_write_reg ( ctx, ISM3_REG_PROTOCOL1, reg_data[ 0 ] );
 
     // Basic packet config
@@ -205,7 +218,7 @@ err_t ism3_default_cfg ( ism3_t *ctx )
 
     // Set CRC check
     error_flag |= ism3_read_reg ( ctx, ISM3_REG_PCKT_FLT_OPTIONS, reg_data );
-    reg_data[ 0 ] |= ISM3_PCKT_FLT_OPTIONS_CRC_FLT;
+    //reg_data[ 0 ] |= ISM3_PCKT_FLT_OPTIONS_CRC_FLT;
     error_flag |= ism3_write_reg ( ctx, ISM3_REG_PCKT_FLT_OPTIONS, reg_data[ 0 ] );
 
     // Config IRQ
@@ -432,47 +445,50 @@ err_t ism3_receive_packet ( ism3_t *ctx, uint8_t *data_out, uint8_t *len )
     {
         return ISM3_ERROR;
     }
+
     error_flag |= ism3_set_irq_mask ( ctx, ISM3_IRQ_RX_DATA_READY | ISM3_IRQ_RX_DATA_DISC );
     error_flag |= ism3_clear_irq_status ( ctx );
-
-    error_flag |= ism3_wait_mc_state ( ctx, ISM3_MC_STATE_READY, ISM3_DEFAULT_TIMEOUT_MS );
+    error_flag |= ism3_go_to_ready ( ctx );
     error_flag |= ism3_write_reg ( ctx, ISM3_REG_PM_CONF3, ISM3_PM_CONF3_RX );
     error_flag |= ism3_write_cmd ( ctx, ISM3_CMD_RX );
 
-    while ( ism3_get_gp1_pin ( ctx ) )
-    {
-        Delay_1ms ( );
-        if ( ++timeout_cnt >= ISM3_DEFAULT_RX_TIMEOUT_MS )
-        {
-            ism3_go_to_rx ( ctx );
-            error_flag = ISM3_TIMEOUT;
-            break;
-        }
-    }
-
-    if ( ISM3_OK == error_flag )
+    // Poll the status register directly instead of GP1 + tick-granularity delay.
+    // esp_rom_delay_us gives real microsecond resolution, unlike vTaskDelay(1ms)
+    // which actually costs a full 10ms FreeRTOS tick.
+    while ( 1 )
     {
         error_flag |= ism3_read_irq_status ( ctx, &irq_status );
-
-        if ( irq_status & ISM3_IRQ_RX_DATA_READY )
+        if ( irq_status & ( ISM3_IRQ_RX_DATA_READY | ISM3_IRQ_RX_DATA_DISC ) )
         {
-            error_flag |= ism3_read_reg ( ctx, ISM3_REG_RX_FIFO_STATUS, &fifo_size );
-            if ( fifo_size > ISM3_PACKET_LEN )
-            {
-                fifo_size = ISM3_PACKET_LEN;
-            }
-            error_flag |= ism3_read_regs ( ctx, ISM3_REG_LINEAR_FIFO, data_out, fifo_size );
-            error_flag |= ism3_write_cmd ( ctx, ISM3_CMD_FLUSHRXFIFO );
-            if ( NULL != len )
-            {
-                *len = fifo_size;
-            }
+            break;
         }
-        else if ( irq_status & ISM3_IRQ_RX_DATA_DISC )
+        esp_rom_delay_us( 200 );   // fine-grained poll, no tick rounding
+        if ( ++timeout_cnt >= ( ISM3_DEFAULT_RX_TIMEOUT_MS * 5 ) )   // 200us * 5 = 1ms equiv steps
         {
-            error_flag = ISM3_ERROR;
+            ism3_go_to_rx ( ctx );
+            return ISM3_TIMEOUT;
         }
     }
+
+    error_flag |= ism3_read_reg ( ctx, ISM3_REG_RX_FIFO_STATUS, &fifo_size );
+    if ( fifo_size > ISM3_PACKET_LEN ) fifo_size = ISM3_PACKET_LEN;
+
+    if ( fifo_size > 0 )
+    {
+        error_flag |= ism3_read_regs ( ctx, ISM3_REG_LINEAR_FIFO, data_out, fifo_size );
+    }
+
+    error_flag |= ism3_write_cmd ( ctx, ISM3_CMD_FLUSHRXFIFO );
+
+    if ( irq_status & ISM3_IRQ_RX_DATA_READY )
+    {
+        if ( NULL != len ) *len = fifo_size;
+    }
+    else
+    {
+        error_flag = ISM3_ERROR;
+    }
+
     return error_flag;
 }
 
