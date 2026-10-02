@@ -170,7 +170,7 @@ err_t ism3_default_cfg ( ism3_t *ctx )
 
     // Enable AFC freeze on sync
     error_flag |= ism3_read_reg ( ctx, ISM3_REG_AFC2, reg_data );
-    reg_data[ 0 ] |= ISM3_AFC2_AFC_FREEZE_ON_SYNC;
+    reg_data[ 0 ] |= ( ISM3_AFC2_AFC_FREEZE_ON_SYNC);
     error_flag |= ism3_write_reg ( ctx, ISM3_REG_AFC2, reg_data[ 0 ] );
 
     // Set synthesizer for frequency base of 433 MHz
@@ -205,7 +205,7 @@ err_t ism3_default_cfg ( ism3_t *ctx )
 
     // Basic packet config
     reg_data[ 0 ] = ISM3_PCKTCTRL6_SYNC_LEN_DEFAULT | ISM3_PCKTCTRL6_PREAMBLE_LEN_DEFAULT;
-    reg_data[ 1 ] = ISM3_PCKTCTRL5_PREAMBLE_LEN_DEFAULT;
+    reg_data[ 1 ] = ISM3_PCKTCTRL5_PREAMBLE_LEN_DEFAULT * 2;
     reg_data[ 2 ] = ISM3_PCKTCTRL4_LEN_WID_1BYTE | ISM3_PCKTCTRL4_ADDRESS_LEN_NOT_INCLUDED;
     error_flag |= ism3_read_regs ( ctx, ISM3_REG_PCKTCTRL3, &reg_data[ 3 ], 3 );
     reg_data[ 3 ] &= ~( ISM3_PCKTCTRL3_PCKT_FRMT_MASK | ISM3_PCKTCTRL3_RX_MODE_MASK );
