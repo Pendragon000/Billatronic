@@ -55,7 +55,7 @@ void start_esp(char type[]) {
 
 void app_main(void)
 {
-    start_esp("WROVER");
+    start_esp("WROOM");
 }
 void ism3_config(char type[]) {
     ism3_cfg_t cfg;
