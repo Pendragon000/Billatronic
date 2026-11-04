@@ -1,4 +1,4 @@
 idf_component_register(
         SRCS "Billatronic.c"
         INCLUDE_DIRS "."
-        REQUIRES driver esp_driver_gpio esp_driver_spi ism3 Keypad)
+        REQUIRES driver esp_driver_gpio led Keypad)
