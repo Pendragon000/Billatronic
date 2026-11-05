@@ -6,27 +6,36 @@
 static keypad_t keypad;
 void keypad_config(keypad_t *init);
 
-#define MDP "1234"
+#define MDP "45131914"
+
 void app_main(void)
 {
     keypad_config(&keypad);
+
     led_t green = led_init(GPIO_NUM_15);
     led_t red = led_init(GPIO_NUM_5);
+
     char buff[50];
+    // Met un dernier null terminator
+    // au cas ou pour quand je compare strcmp.
     buff[49] = '\0';
+
     uint8_t currIndex = 0;
     char lastC = '\0';
+
     while ( 1 )
     {
-        char c = keypad_read(&keypad);
+        const char c = keypad_read(&keypad);
         if ( c != '\0' && c != lastC ) {
             switch ( c ) {
-                // Delete kept string
+
+                // Delete la string buff
                 case '*':
                     ESP_LOGI( TAG, "Reseting string");
                     currIndex = 0;
                     break;
-                // Sends string for verif
+
+                // vérifie la string avec le mot de passe
                 case '#':
                     buff[currIndex] = '\0';
                     ESP_LOGI( TAG, "Verif string : %s", buff );
@@ -43,6 +52,8 @@ void app_main(void)
                     }
                     currIndex = 0;
                     break;
+                    
+                // Ajoute le caractère à la string buff
                 default:
                     ESP_LOGI( TAG, "Adding char '%c' to string", c);
                     if (currIndex >= 49) {
@@ -59,6 +70,10 @@ void app_main(void)
     }
 }
 
+///
+/// Configure le struct de keyboard avec les bon GPIO pour l'initialisation
+///
+/// @param init Le keypad à configurer
 void keypad_config(keypad_t *init) {
     init->rows[0] = GPIO_NUM_4;
     init->rows[1] = GPIO_NUM_16;
