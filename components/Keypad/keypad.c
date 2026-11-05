@@ -1,7 +1,3 @@
-//
-// Created by isaaf on 9/25/2026.
-//
-
 #include "include/keypad.h"
 #include "esp_log.h"
 
