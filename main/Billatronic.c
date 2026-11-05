@@ -10,6 +10,8 @@ void keypad_config(keypad_t *init);
 void app_main(void)
 {
     keypad_config(&keypad);
+    led_t green = led_init(GPIO_NUM_15);
+    led_t red = led_init(GPIO_NUM_5);
     char buff[50];
     buff[49] = '\0';
     uint8_t currIndex = 0;
@@ -24,15 +26,20 @@ void app_main(void)
                     ESP_LOGI( TAG, "Reseting string");
                     currIndex = 0;
                     break;
-                    // Sends string for verif
+                // Sends string for verif
                 case '#':
                     buff[currIndex] = '\0';
                     ESP_LOGI( TAG, "Verif string : %s", buff );
                     if (strcmp(MDP, buff) == 0) {
-                        // Light up green led
+                        led_set(&green, true);
+                        vTaskDelay(pdMS_TO_TICKS(5000));
+                        led_set(&green, false);
                     }
                     else {
-                        // Light up red led
+
+                        led_set(&red, true);
+                        vTaskDelay(pdMS_TO_TICKS(5000));
+                        led_set(&red, false);
                     }
                     currIndex = 0;
                     break;
